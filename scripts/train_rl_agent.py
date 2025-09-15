@@ -174,9 +174,9 @@ def main():
                 env,
                 verbose=1,
                 tensorboard_log="./tensorboard_logs/",
-                n_steps=512,  # Ajustado para ser menor que a duração do episódio
+                n_steps=512,          
                 batch_size=64,
-                learning_rate=0.0003, # Pode manter ou reduzir para 1e-4 se a instabilidade persistir
+                learning_rate=1e-4,   
                 gamma=0.99
             )
 
@@ -315,7 +315,8 @@ def main():
             logger.info(f"├── Policy grad loss: {final_metrics.get('train/policy_gradient_loss', np.nan)}")
             logger.info(f"├── Explained variance: {explained_var}")
             logger.info(f"├── Grad norm (approx): {grad_norm_mean}")
-            logger.info("└── Hiperparâmetros: lr=3e-4, n_steps=2048, batch_size=64, gamma=0.99")
+            logger.info(f"└── Hiperparâmetros: lr={model.learning_rate}, n_steps={model.n_steps}, "
+                        f"batch_size={model.batch_size}, gamma={model.gamma}")
             logger.info("")
             logger.info(f"PROGRESSO EPISÓDIO: Compras {buy_count} | Vendas {sell_count} | Reward médio {np.mean(rewards) if rewards else 0:.4f}")
             logger.info("=" * 60)

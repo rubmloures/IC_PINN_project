@@ -109,52 +109,47 @@ def create_rl_environment(data_frame: pd.DataFrame,
                             ticker: str = "TICKER",
                             use_pinn: bool = True) -> TradingEnv:
     """
-    Cria o ambiente TradingEnv.
-    - data_frame: DataFrame com colunas mínimas: timestamp, close, high, low, volume
-    - pinn_weights_path e pinn_scaling_path: Caminhos obrigatórios para carregar o PINN.
-    - use_pinn: Se False, pulamos o carregamento do PINN.
+    Cria o ambiente TradingEnv usando a escala correta do prêmio para o PINN.
     """
-
     dataset = add_features(data_frame, selic_df=None)
 
     if use_pinn:
         if not os.path.exists(pinn_weights_path) or not os.path.exists(pinn_scaling_path):
-            logger.error(f"Arquivo de pesos '{pinn_weights_path}' ou de scaling '{pinn_scaling_path}' não encontrado.")
-            raise FileNotFoundError("Não foi possível encontrar os artefatos do PINN. Certifique-se de que os caminhos estão corretos.")
+            raise FileNotFoundError(f"Arquivos do PINN não encontrados: {pinn_weights_path} ou {pinn_scaling_path}")
 
         try:
-            # Carrega os fatores de escala
             scaling = load_scaling_factors(pinn_scaling_path)
-            S_min, S_max = scaling.get("S_min", 0.0), scaling.get("S_max", 1.0)
+            # Carrega a escala do PRÊMIO do arquivo JSON
+            P_min = scaling.get("P_min")
+            P_max = scaling.get("P_max")
+            
+            if P_min is None or P_max is None:
+                raise ValueError("Fatores de escala do prêmio (P_min, P_max) não encontrados no arquivo de scaling.")
 
-            # Carrega o modelo PINN com os pesos pré-treinados
-            net = EuropeanCallPINN(S_min=S_min, S_max=S_max)
+            net = EuropeanCallPINN(S_min=scaling.get("S_min"), S_max=scaling.get("S_max"))
             state = torch.load(pinn_weights_path, map_location=device)
             net.load_state_dict(state)
             net.to(device)
             net.eval()
 
-            # Prepara as features para a predição
             feat_cols = ["S_norm", "T_norm", "K_norm", "moneyness_norm", "vol", "r"]
             feats = dataset[feat_cols].fillna(0.0).values.astype("float32")
             
-            # Gera as predições
             with torch.no_grad():
                 inp = torch.from_numpy(feats).to(device)
-                preds = net(inp).cpu().numpy().reshape(-1)
+                preds_normalized = net(inp).cpu().numpy().reshape(-1)
 
-            # Desnormaliza as predições
-            dataset["pinn_pred"] = preds * (S_max - S_min) + S_min
+            # **CORREÇÃO APLICADA AQUI**
+            # Desnormaliza a predição usando a escala CORRETA do prêmio
+            dataset["pinn_pred"] = preds_normalized * (P_max - P_min) + P_min
 
-            # Cria features derivadas das predições do PINN
             dataset = add_pinn_derived_features(dataset)
-            logger.info("[Hermes] PINN pré-treinado carregado e predições adicionadas com sucesso.")
+            logger.info("[Hermes] PINN pré-treinado carregado e predições (com escala correta) adicionadas.")
 
         except Exception as e:
-            logger.error(f"[Hermes] Falha crítica ao carregar o PINN ou ao gerar predições: {e}", exc_info=True)
+            logger.error(f"[Hermes] Falha crítica ao processar o PINN: {e}", exc_info=True)
             raise
     else:
-        # Se o PINN não for usado, garante que as colunas existam com valores padrão
         for col in ["pinn_pred", "pinn_price_ratio", "pinn_momentum_5d", "pinn_vol_10d"]:
             dataset[col] = 0.0
 

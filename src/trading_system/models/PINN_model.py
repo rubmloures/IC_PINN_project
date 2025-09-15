@@ -119,6 +119,8 @@ def train_and_save_pinn(df: Optional[pd.DataFrame] = None,
     K_min = float(df["strike"].min())
     K_max = float(df["strike"].max() if df["strike"].max() > K_min else K_min + 1.0)
     T_max = float(max(1.0, df["time_to_maturity"].max()))
+    P_min = float(df[premium_col].min())
+    P_max = float(df[premium_col].max())
 
     # add normalized columns used by PINN
     df["S_norm"] = (df["spot_price"] - S_min) / (S_max - S_min + 1e-8)
@@ -164,7 +166,10 @@ def train_and_save_pinn(df: Optional[pd.DataFrame] = None,
 
     # save weights and scaling
     torch.save(model.state_dict(), weights_out)
-    scaling = {"S_min": S_min, "S_max": S_max, "K_min": K_min, "K_max": K_max, "T_max": T_max}
+    scaling = {"S_min": S_min, "S_max": S_max, 
+                "K_min": K_min, "K_max": K_max, 
+                "T_max": T_max,
+                "P_min": P_min, "P_max": P_max}
     with open(scaling_out, "w", encoding="utf-8") as f:
         json.dump(scaling, f, indent=2)
 
