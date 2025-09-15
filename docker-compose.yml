@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:14-alpine
+    container_name: trading_system_db
+    environment:
+      POSTGRES_DB: data_trading
+      POSTGRES_USER: admin_trading
+      POSTGRES_PASSWORD: "seteoitonove"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  app:
+    build: .
+    depends_on:
+      - postgres
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      POSTGRES_DB: data_trading
+      POSTGRES_USER: admin_trading
+      POSTGRES_PASSWORD: seteoitonove
+    volumes:
+      - .:/app
+    command: python scripts/create_db.py
+
+volumes:
+  postgres_data:
+    driver: local

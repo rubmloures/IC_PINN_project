@@ -1,0 +1,28 @@
+Metadata-Version: 2.4
+Name: autonomous-trading-system
+Version: 0.1.0
+Summary: An autonomous, modular trading system using Reinforcement Learning.
+Requires-Python: >=3.9
+Requires-Dist: python-dotenv==1.0.1
+Requires-Dist: psycopg-pool==3.2.0
+Requires-Dist: requests
+Requires-Dist: backoff
+Requires-Dist: apscheduler
+Requires-Dist: python-telegram-bot
+Requires-Dist: flask
+Requires-Dist: healthcheck
+Requires-Dist: streamlit
+Requires-Dist: pandas==2.2.2
+Requires-Dist: numpy<2.0,>=1.26.0
+Requires-Dist: tensortrade
+Requires-Dist: stable-baselines3==2.7.0
+Requires-Dist: yfinance==0.2.37
+Requires-Dist: torch
+Requires-Dist: deepxde
+Requires-Dist: gymnasium==0.29.1
+Requires-Dist: shimmy==0.2.1
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: pytest-mock; extra == "dev"
+Requires-Dist: black; extra == "dev"
+Requires-Dist: isort; extra == "dev"

@@ -1,0 +1,18 @@
+# Ambientes Virtuais
+.venv
+venv/
+env/
+
+# Arquivos de Segredos
+.env
+
+# Caches do Python
+__pycache__/
+*.py[cod]
+
+# IDEs e editores
+.idea/
+.vscode/
+
+# Relatórios de Teste
+.pytest_cache/
