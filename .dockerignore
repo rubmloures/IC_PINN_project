@@ -1,0 +1,32 @@
+# Git
+.git
+.gitignore
+
+# Ambiente Virtual
+venv/
+*.venv
+env/
+
+# Python cache e artefatos
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs e ambientes
+*.log
+.env
+.env.*
+
+# Pastas de IDE
+.vscode
+.idea
+
+# Build e dependências
+dist/
+build/
+node_modules/

@@ -8,7 +8,7 @@ from trading_system.db.database_manager import db_manager
 from datetime import datetime
 
 # --- CONFIGURAÇÃO ---
-COTAHIST_FOLDER_PATH = "trading_system/data/Data_Spotprice_hist"
+COTAHIST_FOLDER_PATH = "data\Data_Spotprice_hist"
 # Use a saída do debug_tickers.py atualizado para montar esta lista
 TICKERS_TO_IMPORT = [
     "PETR4", "VALE3", "ITUB4", "BBDC4", "BBAS3", 
