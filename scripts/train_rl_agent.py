@@ -30,7 +30,9 @@ class DashboardCallback(BaseCallback):
             self.dashboard.log_step(
                 net_worth=info.get("net_worth"),
                 position=info.get("position"),
-                reward=self.locals['rewards'][0]
+                reward=self.locals['rewards'][0],
+                pinn_pred=info.get("pinn_pred"),
+                premium=info.get("premium")
             )
         return True
 
@@ -96,7 +98,7 @@ if __name__ == "__main__":
     parser.add_argument("--pinn-scaling-path", type=str, default="models/pinn_scaling_factors.json")
     parser.add_argument("--episodes", type=int, default=10)
     parser.add_argument("--retrain-interval", type=int, default=60)
-    parser.add_argument("--learning-rate", type=float, default=3e-4)
+    parser.add_argument("--learning-rate", type=float, default=1e-4, help="Taxa de aprendizado para o agente PPO.")
     parser.add_argument("--model-save-path", type=str, default="models/")
     parser.add_argument("--log-path", type=str, default="tensorboard_logs/")
     parser.add_argument("--log-level", type=str, default="INFO")

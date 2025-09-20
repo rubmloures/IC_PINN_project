@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import TensorDataset, DataLoader
+import time
 
 # Importa a arquitetura do novo módulo
 from .pinn_architecture import EuropeanCallPINN
@@ -67,7 +68,7 @@ class PINNHandler:
         """Salva os fatores de escala atualizados no arquivo JSON."""
         with open(self.scaling_path, 'w') as f:
             json.dump(self.scaling_factors, f, indent=4)
-        logger.info(f"Fatores de escala atualizados e salvos em '{self.scaling_path}'.")
+        #logger.info(f"Fatores de escala atualizados e salvos em '{self.scaling_path}'.")
 
     def _normalize_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -111,12 +112,11 @@ class PINNHandler:
             
         return predictions_raw
 
-    # --- CORREÇÃO APLICADA AQUI ---
     def fine_tune(self, recent_data: pd.DataFrame, epochs: int = 5, learning_rate: float = 1e-4):
         """
         Realiza o fine-tuning do modelo com dados recentes.
         """
-        logger.info(f"Iniciando fine-tuning do PINN com {len(recent_data)} amostras por {epochs} épocas...")
+        #logger.info(f"Iniciando fine-tuning do PINN com {len(recent_data)} amostras por {epochs} épocas...")
         self.model.train()
 
         df_norm = self._normalize_data(recent_data)
@@ -148,7 +148,7 @@ class PINNHandler:
 
         self.model.eval()
         self.save_weights(self.weights_path)
-        logger.info(f"Fine-tuning concluído. Perda final: {avg_loss:.6f}. Pesos atualizados salvos.")
+        #logger.info(f"Fine-tuning concluído. Perda final: {avg_loss:.6f}. Pesos atualizados salvos.")
 
         self._update_scaling_factors(recent_data)
         self._save_scaling_factors()
@@ -157,7 +157,7 @@ class PINNHandler:
         """
         Recalcula os fatores de escala com base nos dados históricos + novos dados.
         """
-        logger.info("Recalculando fatores de escala com novos dados...")
+        #logger.info("Recalculando fatores de escala com novos dados...")
         epsilon = 1e-8
         
         new_data_mapped = new_data.rename(columns={'close': 'spot_price'})
@@ -181,15 +181,26 @@ class PINNHandler:
         """Carrega os pesos do modelo de um arquivo."""
         try:
             self.model.load_state_dict(torch.load(path, map_location=device))
-            logger.info(f"Pesos do modelo carregados de '{path}'.")
+            #logger.info(f"Pesos do modelo carregados de '{path}'.")
         except Exception as e:
             logger.error(f"Falha ao carregar os pesos de '{path}': {e}", exc_info=True)
             raise
 
-    def save_weights(self, path: str):
-        """Salva os pesos atuais do modelo em um arquivo."""
-        try:
-            torch.save(self.model.state_dict(), path)
-            logger.info(f"Pesos do modelo salvos em '{path}'.")
-        except Exception as e:
-            logger.error(f"Falha ao salvar os pesos em '{path}': {e}", exc_info=True)
+    def save_weights(self, path: str, retries: int = 3, delay: float = 0.1):
+        """
+        Salva os pesos atuais do modelo em um arquivo com múltiplas tentativas
+        para evitar erros de concorrência.
+        """
+        for i in range(retries):
+            try:
+                torch.save(self.model.state_dict(), path)
+                # Se o salvamento for bem-sucedido, loga e sai da função
+                logger.debug(f"Pesos do modelo salvos com sucesso em '{path}' na tentativa {i+1}.")
+                return
+            except Exception as e:
+                logger.warning(f"Tentativa {i+1}/{retries} falhou ao salvar os pesos em '{path}': {e}")
+                if i < retries - 1:
+                    time.sleep(delay) # Espera um pouco antes de tentar novamente
+                else:
+                    # Se todas as tentativas falharem, loga um erro final
+                    logger.error(f"Falha ao salvar os pesos em '{path}' após {retries} tentativas.", exc_info=True)

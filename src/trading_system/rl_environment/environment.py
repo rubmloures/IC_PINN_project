@@ -3,6 +3,7 @@ import logging
 import numpy as np
 import pandas as pd
 from typing import Optional
+from collections import deque
 
 import gymnasium as gym
 from gymnasium import spaces
@@ -22,7 +23,8 @@ class TradingEnv(gym.Env):
         pinn_handler: PINNHandler,
         retrain_interval: int,
         window_size: int = 20,
-        starting_balance: float = 10000.0
+        starting_balance: float = 10000.0,
+        transaction_cost_pct: float = 0.001
     ):
         super().__init__()
 
@@ -30,9 +32,9 @@ class TradingEnv(gym.Env):
         self.retrain_interval = retrain_interval
         self.window_size = int(window_size)
         self.starting_balance = float(starting_balance)
+        self.transaction_cost_pct = transaction_cost_pct
         self.raw_df = full_dataset.copy()
-        # Define o número máximo de passos com base no tamanho do DataFrame.
-        self.max_current_step = len(self.raw_df) - 1
+        self.max_steps = len(self.raw_df) - 1
 
         logger.info("Gerando predições iniciais do PINN para todo o dataset...")
         initial_pinn_preds = self.pinn_handler.predict(self.raw_df)
@@ -60,6 +62,9 @@ class TradingEnv(gym.Env):
         self._current_step = 0
         self.net_worth = 0.0
         self._position = 0.0
+        self._last_position = 0.0
+        self.rewards_history = deque(maxlen=self.window_size)
+        self.peak_net_worth = self.starting_balance
 
     def _get_observation(self) -> np.ndarray:
         start_idx = max(0, self._current_step - self.window_size + 1)
@@ -77,26 +82,62 @@ class TradingEnv(gym.Env):
         self._current_step = 0
         self.net_worth = self.starting_balance
         self._position = 0.0
-        
+        self._last_position = 0.0
+        self.rewards_history.clear()
+        self.peak_net_worth = self.starting_balance
         info = { "net_worth": self.net_worth, "position": self._position }
         return self._get_observation(), info
 
     def step(self, action):
         if self._current_step >= len(self.df) - 1:
             return self._get_observation(), 0.0, True, False, {}
-
         # Treinamento do PINN em intervalos definidos
         prev_price = self.df.iloc[self._current_step]["close"]
         self._current_step += 1
-        cur_price = self.df.iloc[self._current_step]["close"]
+        done = self._current_step >= self.max_steps
 
-        
+        current_price = self.df.iloc[self._current_step]["close"]
+
         pos = (action - self._action_center) / float(self._action_center)
         self._position = pos
+        # 1. Calcular o retorno bruto do log
+        log_return = np.log(current_price / prev_price) if prev_price > 0 and current_price > 0 else 0.0
 
-        log_ret = np.log(cur_price / prev_price) if prev_price > 0 and cur_price > 0 else 0.0
-        reward = self._position * log_ret * self.net_worth
-        self.net_worth = max(0.0, self.net_worth + reward)
+        # 2. Definir a nova posição e calcular o custo de transação
+        self._last_position = self._position
+        self._position = (action - self._action_center) / self._action_center
+
+        trade_volume = abs(self._position - self._last_position)
+        transaction_cost = trade_volume * self.transaction_cost_pct
+
+        # 3. Calcular a recompensa baseada no retorno da posição
+        position_reward = self._position * log_return
+
+        # 4. Calcular o componente de recompensa do Sortino Ratio
+        self.rewards_history.append(position_reward)
+        if len(self.rewards_history) > 1:
+            negative_rewards = [r for r in self.rewards_history if r < 0]
+            downside_std = np.std(negative_rewards) if negative_rewards else 0
+            sortino_ratio = np.mean(self.rewards_history) / (downside_std + 1e-8)
+        else:
+            sortino_ratio = 0.0
+
+        # 5. Combinar os componentes na recompensa final
+        # Cálculo da Penalidade por Drawdown
+        self.peak_net_worth = max(self.peak_net_worth, self.net_worth)
+        drawdown = (self.peak_net_worth - self.net_worth) / self.peak_net_worth
+        drawdown_penalty = drawdown * 0.1 # Penalidade proporcional ao drawdown
+
+        # A recompensa agora é o retorno da posição, menos os custos, mais um bônus por consistência (Sortino)
+        reward = position_reward - transaction_cost + (sortino_ratio * 0.01) - drawdown_penalty
+
+        # Atualiza o patrimônio com base no retorno real (sem o Sortino) e custos
+        self.net_worth *= (1 + position_reward - transaction_cost)
+
+        if self._current_step % self.retrain_interval == 0 and not done:
+            start_idx = max(0, self._current_step - self.retrain_interval)
+            recent_data = self.raw_df.iloc[start_idx:self._current_step]
+            self.pinn_handler.fine_tune(recent_data)
 
         obs = self._get_observation()
 
@@ -113,6 +154,8 @@ class TradingEnv(gym.Env):
             "net_worth": self.net_worth,
             "position": self._position,
             "timestamp": timestamp,
+            "pinn_pred": self.df.loc[self._current_step, 'pinn_pred'],
+            "premium": self.df.loc[self._current_step, 'premium']
         }
         return obs, float(reward), self._current_step >= len(self.df) - 1, False, info
 

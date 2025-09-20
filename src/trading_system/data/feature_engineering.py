@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 LOCAL_SELIC_PATH = r"D:\UERJ\Programacao_e_Codigos\trading_system\data\taxa_selic.csv"
 BCB_API = "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados"
 
-
+# --- Indicador Taxa SELIC ---
 def get_selic_series(start: str, end: str) -> pd.DataFrame:
     """
     Busca taxa SELIC: CSV local -> BCB API -> fallback fixo (13.75%).
@@ -63,9 +63,10 @@ def get_selic_series(start: str, end: str) -> pd.DataFrame:
         logger.error(f"Erro ao buscar SELIC: {e}")
 
     # 3) fallback
-    logger.warning("⚠️ Usando fallback da SELIC em 13.75% ao ano.")
+    logger.warning("Usando fallback da SELIC em 13.75% ao ano.")
     idx = pd.date_range(start, end, freq="B")
     return pd.DataFrame({"data": idx, "r": 0.1375})
+
 
 
 # --- indicadores auxiliares ---
@@ -179,17 +180,20 @@ def add_features(df: pd.DataFrame, selic_df: Optional[pd.DataFrame]) -> pd.DataF
     try:
         out = df.copy()
 
-        # ensure timestamp normalized
-        if "timestamp" in out.columns:
+        # Garante que 'timestamp' exista e seja do tipo datetime para fusões
+        if 'timestamp' in out.columns:
             out["timestamp"] = pd.to_datetime(out["timestamp"])
 
-        # prepare pinn input columns (S_norm etc) but don't touch pinn_pred here
         pinn_feats = prepare_pinn_features(out, selic_df)
         for c in pinn_feats.columns:
             out[c] = pinn_feats[c].values
 
-        # technical indicators
         if "close" in out.columns:
+            # --- Médias Móveis ---
+            out["EMA_21"] = out["close"].ewm(span=21, adjust=False).mean()
+            out["EMA_50"] = out["close"].ewm(span=50, adjust=False).mean()
+            
+            # Funções existentes mantidas
             out["rsi"] = compute_rsi(out["close"])
             out["macd"] = compute_macd(out["close"])
             out["momentum"] = compute_momentum(out["close"])
@@ -207,7 +211,6 @@ def add_features(df: pd.DataFrame, selic_df: Optional[pd.DataFrame]) -> pd.DataF
         else:
             out["obv"] = 0.0
 
-        # Bollinger bands: (close - ma20)/std20
         try:
             ma20 = out["close"].rolling(20, min_periods=1).mean()
             std20 = out["close"].rolling(20, min_periods=1).std().fillna(0.0)
@@ -215,13 +218,12 @@ def add_features(df: pd.DataFrame, selic_df: Optional[pd.DataFrame]) -> pd.DataF
         except Exception:
             out["bollinger"] = 0.0
 
-        # VIX proxy: use volatility * 100 (volatility in decimal from compute_volatility)
         try:
             out["vix_proxy"] = out["volatility"].fillna(0.0) * 100.0
         except Exception:
             out["vix_proxy"] = 0.0
 
-        # fill remaining NaNs
+        # Preenche os valores nulos gerados pelas médias móveis e outros cálculos
         out = out.fillna(0.0)
         logger.info("[Hermes] Features financeiras + PINN (preparadas) adicionadas com sucesso.")
         return out
